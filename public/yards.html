@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>For yards — get buyers for your used parts | Wreckly</title>
+<meta name="description" content="Free for yards. Wreckly sends you buyers looking for specific parts. We only earn 10% on parts that are reserved.">
+<link rel="icon" href="/mascot-sm.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head><body>
+<div id="site-header"></div>
+
+<section class="hero" style="padding:0"><div class="wrap" style="grid-template-columns:1fr">
+  <div><span class="badge">For auto yards &amp; dismantlers</span>
+  <h1>Buyers for your <span>used parts.</span></h1>
+  <p class="lead" style="max-width:46ch">Join free. We send you buyers asking for specific parts. You set the price. We earn 10% only when a part is reserved.</p></div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="kicker">How it works for you</div>
+  <h2>You answer. We bring the buyer.</h2>
+  <div class="steps">
+    <div class="step"><h3>We send a request</h3><p>A buyer needs a part. We ask: do you have it, and at what price?</p></div>
+    <div class="step"><h3>You reply</h3><p>Send availability and your price. You set the price.</p></div>
+    <div class="step"><h3>Buyer reserves</h3><p>The buyer pays a 10% deposit to Wreckly and gets your contact and address.</p></div>
+    <div class="step"><h3>You sell</h3><p>The buyer comes to your yard and pays you the other 90%.</p></div>
+  </div>
+  <div class="card example" style="margin-top:22px"><h3>The 10%</h3>
+    <p>No sign-up fee, no monthly fee, no cost if nothing sells. The 10% is collected from the buyer's deposit up front, so you never invoice us or chase a payment.</p>
+    <p><b>Example:</b> you quote an alternator at $200. The buyer pays <b>$20</b> to Wreckly and <b>$180</b> to you at pickup.</p></div>
+</div></section>
+
+<section class="alt"><div class="wrap narrow">
+  <div class="kicker">Join</div><h2>Tell us about your yard</h2>
+  <form id="f" class="formcard" novalidate>
+    <div class="grid2">
+      <div class="field"><label class="req" for="yard">Yard name</label><input id="yard" name="yard" required maxlength="120"></div>
+      <div class="field"><label for="contact">Contact person</label><input id="contact" name="contact" maxlength="80"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label class="req" for="email">Email for parts requests</label><input id="email" name="email" type="email" required maxlength="120"></div>
+      <div class="field"><label class="req" for="phone">Phone</label><input id="phone" name="phone" type="tel" required maxlength="30"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label class="req" for="address">Address</label><input id="address" name="address" required maxlength="200"></div>
+      <div class="field"><label class="req" for="city">City</label><input id="city" name="city" required maxlength="60"></div>
+    </div>
+    <div class="field"><label for="types">Vehicles you usually carry</label><input id="types" name="types" maxlength="200" placeholder="Japanese, European, domestic, trucks&hellip;"></div>
+    <div class="field"><label for="notes">Anything else?</label><textarea id="notes" name="notes" maxlength="600"></textarea></div>
+    <div class="hp" aria-hidden="true"><label>Website<input id="website" name="website" tabindex="-1" autocomplete="off"></label></div>
+    <div class="field"><label class="check"><input type="checkbox" id="terms" required><span>I agree to the <a href="/terms.html" target="_blank">Terms of Service</a>, including the yard responsibilities and the 10% fee on reserved parts.</span></label></div>
+    <button class="btn" id="go" type="submit">Join Wreckly</button>
+    <div id="msg" class="msg" role="status"></div>
+  </form>
+</div></section>
+
+<div id="site-footer"></div>
+<script src="/site.js"></script>
+<script>
+(function(){
+  var f=document.getElementById('f'),msg=document.getElementById('msg'),go=document.getElementById('go');
+  function show(t,c){msg.className='msg '+c;msg.textContent=t}
+  f.addEventListener('submit',function(e){
+    e.preventDefault();
+    var d={};['yard','contact','email','phone','address','city','types','notes','website'].forEach(function(k){d[k]=f.elements[k].value.trim()});
+    if(!d.yard||!d.email||!d.phone||!d.address||!d.city){return show('Please fill in the required fields.','err')}
+    if(!f.elements.terms.checked){return show('Please accept the Terms to continue.','err')}
+    go.disabled=true;go.textContent='Sending...';
+    wrecklyPost('/api/yard',d).then(function(r){
+      if(r.ok){f.reset();show('Thanks! You are on the list. We will email you the first requests soon.','ok');go.textContent='Sent'}
+      else{show(r.body.error||'Something went wrong. Please email info@wreckly.ca.','err');go.disabled=false;go.textContent='Join Wreckly'}
+    }).catch(function(){show('Network error. Please try again.','err');go.disabled=false;go.textContent='Join Wreckly'});
+  });
+})();
+</script>
+</body></html>

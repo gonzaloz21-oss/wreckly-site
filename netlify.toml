@@ -1,0 +1,41 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/admin/data"
+  to = "/.netlify/functions/admin-data"
+  status = 200
+[[redirects]]
+  from = "/api/admin/update"
+  to = "/.netlify/functions/admin-update"
+  status = 200
+[[redirects]]
+  from = "/api/admin/quote"
+  to = "/.netlify/functions/admin-quote"
+  status = 200
+[[redirects]]
+  from = "/api/request"
+  to = "/.netlify/functions/request"
+  status = 200
+[[redirects]]
+  from = "/api/yard"
+  to = "/.netlify/functions/yard"
+  status = 200
+[[redirects]]
+  from = "/api/stripe-webhook"
+  to = "/.netlify/functions/stripe-webhook"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+[[headers]]
+  for = "/admin*"
+  [headers.values]
+    X-Robots-Tag = "noindex"

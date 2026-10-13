@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Wreckly admin</title>
+<link rel="icon" href="/mascot-sm.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,600;0,700;0,800;1,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+ .tabs{display:flex;gap:8px;margin:18px 0}
+ .tab{padding:8px 16px;border-radius:999px;border:1.5px solid var(--black);background:#fff;font-weight:700;cursor:pointer}
+ .tab.on{background:var(--black);color:#fff}
+ .req-item{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+ .req-head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:14px 16px;cursor:pointer;flex-wrap:wrap}
+ .req-head b{font-size:1.05rem}
+ .pill{font-size:.75rem;font-weight:800;text-transform:uppercase;padding:3px 10px;border-radius:999px;background:#eee}
+ .pill.new{background:#ffe9dd;color:var(--orange-d)}.pill.quoted{background:#fff3c4;color:#7a5b00}.pill.paid{background:#dff3e4;color:var(--ok)}.pill.no_stock,.pill.closed{background:#eee;color:#666}
+ .req-body{display:none;padding:0 16px 16px;border-top:1px solid var(--line)}
+ .req-item.open .req-body{display:block}
+ .kv{display:grid;grid-template-columns:120px 1fr;gap:4px 12px;margin:12px 0;font-size:.95rem}
+ .kv span:nth-child(odd){color:var(--mute);font-weight:600}
+ .linkbox{background:#f3f1ec;border-radius:8px;padding:10px;word-break:break-all;font-size:.85rem;margin-top:10px}
+ .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+ #login{max-width:360px;margin:80px auto}
+</style></head><body>
+<header class="nav"><div class="wrap"><span class="brand"><img src="/mascot-sm.png" alt="" width="34" height="44"><span>Wreckly admin</span></span><span id="who" style="color:#bbb;font-size:.9rem"></span></div></header>
+<div class="wrap" style="padding-bottom:60px">
+ <div id="login" class="formcard"><h3>Sign in</h3><div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div><button class="btn" id="loginBtn">Enter</button><div id="lmsg" class="msg"></div></div>
+ <div id="app" style="display:none">
+  <div class="tabs"><button class="tab on" data-t="requests">Requests <span id="c1"></span></button><button class="tab" data-t="yards">Yards <span id="c2"></span></button><button class="tab" id="refresh">&#8635; Refresh</button></div>
+  <div id="list"></div>
+ </div>
+</div>
+<script>
+(function(){
+  var pw=sessionStorage.getItem('wpw')||'', tab='requests', data={requests:[],yards:[]}, openId=null;
+  var $=function(i){return document.getElementById(i)};
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function api(path,body){
+    return fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-admin-password':pw},body:body?JSON.stringify(body):undefined})
+      .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||r.status);return j})});
+  }
+  function money(c){return c==null?'':'$'+(c/100).toFixed(2)}
+  function load(){
+    return api('/api/admin/data').then(function(d){data=d;$('login').style.display='none';$('app').style.display='block';render()})
+    .catch(function(e){sessionStorage.removeItem('wpw');$('login').style.display='block';$('app').style.display='none';$('lmsg').className='msg err';$('lmsg').textContent='Wrong password or server error.'});
+  }
+  function render(){
+    $('c1').textContent='('+data.requests.length+')';$('c2').textContent='('+data.yards.length+')';
+    var h='';
+    if(tab==='requests'){
+      if(!data.requests.length)h='<p>No requests yet.</p>';
+      data.requests.forEach(function(r){
+        var open=openId===r.id;
+        h+='<div class="req-item'+(open?' open':'')+'" data-id="'+r.id+'"><div class="req-head" data-toggle="'+r.id+'"><div><b>'+esc(r.part)+'</b><br><span style="color:var(--mute)">'+esc(r.year+' '+r.make+' '+r.model)+' &middot; '+esc(r.postal)+' &middot; '+new Date(r.created_at).toLocaleString()+'</span></div><span class="pill '+r.status+'">'+r.status.replace('_',' ')+'</span></div><div class="req-body">'+
+        '<div class="kv"><span>Buyer</span><span>'+esc(r.name)+' &middot; <a href="mailto:'+esc(r.email)+'">'+esc(r.email)+'</a> '+esc(r.phone||'')+'</span><span>VIN</span><span>'+esc(r.vin||'-')+'</span><span>Notes</span><span>'+esc(r.notes||'-')+'</span></div>'+
+        (r.status==='paid'?'<div class="msg ok" style="display:block">PAID '+money(r.deposit_cents)+' &middot; '+esc(r.yard_name)+' &middot; '+esc(r.yard_phone)+' &middot; price '+money(r.price_cents)+'</div>':
+        '<h3 style="margin-top:14px">Quote from a yard</h3><div class="grid2"><div class="field"><label>Yard name</label><input data-f="yard_name" value="'+esc(r.yard_name||'')+'"></div><div class="field"><label>Yard phone</label><input data-f="yard_phone" value="'+esc(r.yard_phone||'')+'"></div></div><div class="grid2"><div class="field"><label>Yard address</label><input data-f="yard_address" value="'+esc(r.yard_address||'')+'"></div><div class="field"><label>Yard email (optional)</label><input data-f="yard_email" value="'+esc(r.yard_email||'')+'"></div></div><div class="grid2"><div class="field"><label>Yard price ($ CAD)</label><input data-f="price" type="number" step="0.01" min="10" value="'+(r.price_cents?(r.price_cents/100):'')+'"></div><div class="field"><label>Deposit (10%)</label><input disabled data-dep value="'+(r.deposit_cents?money(r.deposit_cents):'')+'"></div></div>'+
+        '<div class="row"><button class="btn small" data-act="link">Create deposit link</button><button class="btn small dark" data-act="email">Create link &amp; email buyer</button></div>'+
+        (r.link_url?'<div class="linkbox"><b>Link:</b> <span data-url>'+esc(r.link_url)+'</span><div class="row"><button class="btn small" data-act="copy">Copy link</button></div></div>':'')+
+        '<div class="msg" data-msg></div>')+
+        '<div class="field" style="margin-top:14px"><label>Internal notes</label><textarea data-f="admin_notes">'+esc(r.admin_notes||'')+'</textarea></div>'+
+        '<div class="row"><select data-status style="width:auto"><option value="new">new</option><option value="quoted">quoted</option><option value="paid">paid</option><option value="no_stock">no stock</option><option value="closed">closed</option></select><button class="btn small dark" data-act="save">Save status &amp; notes</button></div>'+
+        '</div></div>';
+      });
+    } else {
+      if(!data.yards.length)h='<p>No yard signups yet.</p>';
+      data.yards.forEach(function(y){
+        h+='<div class="req-item open"><div class="req-body" style="display:block;border:0"><div class="kv"><span>Yard</span><span><b>'+esc(y.name)+'</b> ('+esc(y.city)+')</span><span>Contact</span><span>'+esc(y.contact||'')+' &middot; '+esc(y.phone)+' &middot; '+esc(y.email)+'</span><span>Address</span><span>'+esc(y.address)+'</span><span>Carries</span><span>'+esc(y.vehicle_types||'-')+'</span><span>Notes</span><span>'+esc(y.notes||'-')+'</span><span>Joined</span><span>'+new Date(y.created_at).toLocaleDateString()+'</span></div></div></div>';
+      });
+    }
+    $('list').innerHTML=h;
+    document.querySelectorAll('[data-status]').forEach(function(s){var id=s.closest('.req-item').dataset.id;var r=data.requests.find(function(x){return x.id===id});s.value=r.status});
+  }
+  $('list').addEventListener('click',function(e){
+    var t=e.target.closest('[data-toggle]');
+    if(t){openId=openId===t.dataset.toggle?null:t.dataset.toggle;render();return}
+    var b=e.target.closest('[data-act]');if(!b)return;
+    var item=b.closest('.req-item'),id=item.dataset.id,msg=item.querySelector('[data-msg]');
+    function f(n){var el=item.querySelector('[data-f="'+n+'"]');return el?el.value:''}
+    function say(t,c){if(msg){msg.className='msg '+c;msg.textContent=t}}
+    var act=b.dataset.act;
+    if(act==='copy'){navigator.clipboard.writeText(item.querySelector('[data-url]').textContent);b.textContent='Copied';return}
+    if(act==='save'){api('/api/admin/update',{table:'requests',id:id,status:item.querySelector('[data-status]').value,admin_notes:f('admin_notes')}).then(load).then(function(){openId=id;render()}).catch(function(e){alert(e.message)});return}
+    if(act==='email'&&!confirm('Create the link and EMAIL it to the buyer now?'))return;
+    b.disabled=true;
+    api('/api/admin/quote',{id:id,price:f('price'),yard_name:f('yard_name'),yard_phone:f('yard_phone'),yard_address:f('yard_address'),yard_email:f('yard_email'),send:act==='email'})
+      .then(function(r){return load().then(function(){openId=id;render();var m=document.querySelector('[data-id="'+id+'"] [data-msg]');if(m){m.className='msg ok';m.textContent=r.emailed?'Link created and emailed to the buyer.':'Link created. Copy it and send it to the buyer.'}})})
+      .catch(function(e){b.disabled=false;say(e.message,'err')});
+  });
+  document.querySelector('.tabs').addEventListener('click',function(e){
+    var t=e.target.closest('.tab');if(!t)return;
+    if(t.id==='refresh'){load();return}
+    tab=t.dataset.t;document.querySelectorAll('.tab[data-t]').forEach(function(x){x.classList.toggle('on',x===t)});render();
+  });
+  $('loginBtn').addEventListener('click',function(){pw=$('pw').value;sessionStorage.setItem('wpw',pw);load()});
+  $('pw').addEventListener('keydown',function(e){if(e.key==='Enter')$('loginBtn').click()});
+  if(pw)load();
+})();
+</script></body></html>
