@@ -12,7 +12,7 @@
 
   var footer =
     '<footer><div class="wrap"><div class="row">' +
-    '<div><strong style="color:#fff;font-style:italic;text-transform:uppercase">Wreckly</strong><br>Find parts. Skip the calls.<br>9 St. Stevens Court, Toronto, ON M9A 0E9</div>' +
+    '<div><strong style="color:#fff;font-style:italic;text-transform:uppercase">Wreckly</strong><br>Find parts. Skip the calls.<br>Ontario, Canada</div>' +
     '<div><a href="/terms.html">Terms of Service</a><br><a href="/privacy.html">Privacy Policy</a><br><a href="mailto:info@wreckly.ca">info@wreckly.ca</a></div>' +
     '</div><p style="margin-top:18px;font-size:.82rem">Wreckly is an intermediary. Parts are sold by independent yards, which are responsible for the parts and any warranty.</p></div></footer>';
 
