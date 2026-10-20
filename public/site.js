@@ -5,7 +5,7 @@
 
   var header =
     '<header class="nav"><div class="wrap">' +
-    '<a class="brand" href="/"><img src="/mascot-sm.png" alt="" width="34" height="44"><span>Wreckly</span></a>' +
+    '<a class="brand" href="/"><img src="/mascot-sm.png" alt="Wreckly logo" width="34" height="44"><span>Wreckly</span></a>' +
     '<button class="menu-btn" aria-label="Menu" id="menuBtn">&#9776;</button>' +
     '<nav id="mainNav"><a href="/#how">How it works</a><a href="/yards.html">For yards</a>' +
     '<a class="btn small" href="/request.html">Find a part</a></nav></div></header>';
