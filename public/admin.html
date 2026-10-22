@@ -41,6 +41,13 @@
       .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||r.status);return j})});
   }
   function money(c){return c==null?'':'$'+(c/100).toFixed(2)}
+  function quotesHtml(id){
+    var qs=(data.quotes||[]).filter(function(q){return q.request_id===id});
+    if(!qs.length)return '<p style="color:var(--mute);margin-top:10px">No yards were texted for this request.</p>';
+    return '<h3 style="margin-top:14px">Yards contacted</h3><div class="kv">'+qs.map(function(q){
+      return '<span>'+esc(q.yard_name)+'</span><span><b>'+esc(q.status)+'</b>'+(q.price_cents?' &middot; '+money(q.price_cents):'')+' &middot; '+esc(q.yard_phone||'')+(q.distance_km!=null?' &middot; '+q.distance_km+' km':'')+(q.reply?' &middot; &ldquo;'+esc(q.reply)+'&rdquo;':'')+(q.error?' &middot; '+esc(q.error):'')+'</span>';
+    }).join('')+'</div>';
+  }
   function load(){
     return api('/api/admin/data').then(function(d){data=d;$('login').style.display='none';$('app').style.display='block';render()})
     .catch(function(e){sessionStorage.removeItem('wpw');$('login').style.display='block';$('app').style.display='none';$('lmsg').className='msg err';$('lmsg').textContent='Wrong password or server error.'});
@@ -53,7 +60,7 @@
       data.requests.forEach(function(r){
         var open=openId===r.id;
         h+='<div class="req-item'+(open?' open':'')+'" data-id="'+r.id+'"><div class="req-head" data-toggle="'+r.id+'"><div><b>'+esc(r.part)+'</b><br><span style="color:var(--mute)">'+esc(r.year+' '+r.make+' '+r.model)+' &middot; '+esc(r.postal)+' &middot; '+new Date(r.created_at).toLocaleString()+'</span></div><span class="pill '+r.status+'">'+r.status.replace('_',' ')+'</span></div><div class="req-body">'+
-        '<div class="kv"><span>Buyer</span><span>'+esc(r.name)+' &middot; <a href="mailto:'+esc(r.email)+'">'+esc(r.email)+'</a> '+esc(r.phone||'')+'</span><span>VIN</span><span>'+esc(r.vin||'-')+'</span><span>Notes</span><span>'+esc(r.notes||'-')+'</span></div>'+
+        '<div class="kv"><span>Buyer</span><span>'+esc(r.name)+' &middot; <a href="mailto:'+esc(r.email)+'">'+esc(r.email)+'</a> '+esc(r.phone||'')+'</span><span>VIN</span><span>'+esc(r.vin||'-')+'</span><span>Notes</span><span>'+esc(r.notes||'-')+'</span></div>'+quotesHtml(r.id)+
         (r.status==='paid'?'<div class="msg ok" style="display:block">PAID '+money(r.deposit_cents)+' &middot; '+esc(r.yard_name)+' &middot; '+esc(r.yard_phone)+' &middot; price '+money(r.price_cents)+'</div>':
         '<h3 style="margin-top:14px">Quote from a yard</h3><div class="grid2"><div class="field"><label>Yard name</label><input data-f="yard_name" value="'+esc(r.yard_name||'')+'"></div><div class="field"><label>Yard phone</label><input data-f="yard_phone" value="'+esc(r.yard_phone||'')+'"></div></div><div class="grid2"><div class="field"><label>Yard address</label><input data-f="yard_address" value="'+esc(r.yard_address||'')+'"></div><div class="field"><label>Yard email (optional)</label><input data-f="yard_email" value="'+esc(r.yard_email||'')+'"></div></div><div class="grid2"><div class="field"><label>Yard price ($ CAD)</label><input data-f="price" type="number" step="0.01" min="10" value="'+(r.price_cents?(r.price_cents/100):'')+'"></div><div class="field"><label>Deposit (10%)</label><input disabled data-dep value="'+(r.deposit_cents?money(r.deposit_cents):'')+'"></div></div>'+
         '<div class="row"><button class="btn small" data-act="link">Create deposit link</button><button class="btn small dark" data-act="email">Create link &amp; email buyer</button></div>'+
@@ -64,9 +71,17 @@
         '</div></div>';
       });
     } else {
-      if(!data.yards.length)h='<p>No yard signups yet.</p>';
+      if(!data.yards.length)h='<p>No yards yet.</p>';
+      var act=data.yards.filter(function(y){return y.active}).length, loc=data.yards.filter(function(y){return y.lat!=null}).length;
+      h+='<p style="color:var(--mute)">'+act+' active &middot; '+loc+' on the map (only active yards on the map get request texts)</p>';
       data.yards.forEach(function(y){
-        h+='<div class="req-item open"><div class="req-body" style="display:block;border:0"><div class="kv"><span>Yard</span><span><b>'+esc(y.name)+'</b> ('+esc(y.city)+')</span><span>Contact</span><span>'+esc(y.contact||'')+' &middot; '+esc(y.phone)+' &middot; '+esc(y.email)+'</span><span>Address</span><span>'+esc(y.address)+'</span><span>Carries</span><span>'+esc(y.vehicle_types||'-')+'</span><span>Notes</span><span>'+esc(y.notes||'-')+'</span><span>Joined</span><span>'+new Date(y.created_at).toLocaleDateString()+'</span></div></div></div>';
+        h+='<div class="req-item open" data-yid="'+y.id+'"><div class="req-body" style="display:block;border:0"><div class="kv">'+
+        '<span>Yard</span><span><b>'+esc(y.company)+'</b> ('+esc(y.city||'')+')'+(y.active?'':' &middot; <b>inactive</b>')+(y.sms_ok===false?' &middot; <b>opted out of SMS</b>':'')+'</span>'+
+        '<span>Phone</span><span>'+esc(y.phone||'-')+(y.email?' &middot; '+esc(y.email):'')+(y.contact?' &middot; '+esc(y.contact):'')+'</span>'+
+        '<span>Address</span><span>'+esc(y.address||[y.city,y.postal_code].filter(Boolean).join(', ')||'-')+'</span>'+
+        '<span>Map</span><span>'+(y.lat!=null?'located':'<b>no lat/lng: will not get requests</b>')+'</span>'+
+        '<span>Source</span><span>'+esc(y.source||'hubspot')+(y.vehicle_types?' &middot; carries '+esc(y.vehicle_types):'')+'</span>'+
+        '</div><div class="row"><button class="btn small dark" data-yact="toggle">'+(y.active?'Deactivate':'Activate')+'</button></div></div></div>';
       });
     }
     $('list').innerHTML=h;
@@ -75,6 +90,9 @@
   $('list').addEventListener('click',function(e){
     var t=e.target.closest('[data-toggle]');
     if(t){openId=openId===t.dataset.toggle?null:t.dataset.toggle;render();return}
+    var yb=e.target.closest('[data-yact]');
+    if(yb){var yid=Number(yb.closest('[data-yid]').dataset.yid);var y=data.yards.find(function(x){return x.id===yid});yb.disabled=true;
+      api('/api/admin/update',{table:'yards',id:yid,active:!y.active}).then(load).catch(function(e){yb.disabled=false;alert(e.message)});return}
     var b=e.target.closest('[data-act]');if(!b)return;
     var item=b.closest('.req-item'),id=item.dataset.id,msg=item.querySelector('[data-msg]');
     function f(n){var el=item.querySelector('[data-f="'+n+'"]');return el?el.value:''}
