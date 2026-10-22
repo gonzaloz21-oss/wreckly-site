@@ -4,8 +4,12 @@
 
 [functions]
   node_bundler = "esbuild"
-  [functions."keepalive"]
+
+[functions."keepalive"]
   schedule = "@daily"
+
+[functions."dispatch"]
+  schedule = "*/15 * * * *"
 
 [[redirects]]
   from = "/api/admin/data"
@@ -26,6 +30,10 @@
 [[redirects]]
   from = "/api/yard"
   to = "/.netlify/functions/yard"
+  status = 200
+[[redirects]]
+  from = "/api/sms-inbound"
+  to = "/.netlify/functions/sms-inbound"
   status = 200
 [[redirects]]
   from = "/api/stripe-webhook"
