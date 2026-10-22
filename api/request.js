@@ -20,9 +20,9 @@ module.exports = async (req, res) => {
     };
     if (!row.part || !row.year || !row.make || !row.model || !row.name || !row.email)
       return send(res, 400, { error: 'Please fill in the required fields.' });
-    if (!/^\\S+@\\S+\\.\\S+$/.test(row.email))
+    if (!/^\S+@\S+\.\S+$/.test(row.email))
       return send(res, 400, { error: 'Please enter a valid email.' });
-    if (!/^[A-Z]\\d[A-Z][ -]?\\d[A-Z]\\d$/.test(row.postal))
+    if (!/^[A-Z]\d[A-Z][ -]?\d[A-Z]\d$/.test(row.postal))
       return send(res, 400, { error: 'Please enter a valid Canadian postal code.' });
 
     const saved = await db.insert('requests', row);
@@ -54,10 +54,10 @@ module.exports = async (req, res) => {
       ].filter(Boolean).join('\n');
       try {
         await sendSms(yard.phone, msg);
-        smsLog.push(`  ✓ ${yard.name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone}`);
+        smsLog.push(`  ✓ ${yard.company || yard.name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone}`);
       } catch (e) {
         console.error('SMS failed for', yard.name, e.message);
-        smsLog.push(`  ✗ ${yard.name} — SMS failed: ${e.message}`);
+        smsLog.push(`  ✗ ${yard.company || yard.name} — SMS failed: ${e.message}`);
       }
     }
 
