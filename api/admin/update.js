@@ -15,7 +15,8 @@ module.exports = async (req, res) => {
     }
     if (d.table === 'yards') {
       const patch = {};
-      if (['new', 'active', 'paused'].includes(d.status)) patch.status = d.status;
+      if (typeof d.active === 'boolean') patch.active = d.active;
+      if (typeof d.sms_ok === 'boolean') patch.sms_ok = d.sms_ok;
       return send(res, 200, { row: await db.update('yards', d.id, patch) });
     }
     return send(res, 400, { error: 'Bad table' });
