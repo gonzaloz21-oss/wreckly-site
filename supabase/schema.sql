@@ -1,32 +1,70 @@
--- Run this once in Supabase: SQL Editor -> New query -> paste -> Run
-create extension if not exists pgcrypto;
-
-create table if not exists requests (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  status text not null default 'new',           -- new | quoted | paid | closed | no_stock
-  part text not null,
-  year text, make text, model text, vin text,
-  postal text,
-  name text not null, email text not null, phone text,
-  notes text,
-  -- quote (filled by admin)
-  yard_name text, yard_phone text, yard_address text, yard_email text,
-  price_cents integer, deposit_cents integer,
-  link_url text, link_id text,
-  quoted_at timestamptz,
-  paid_at timestamptz, payment_intent text,
-  admin_notes text
-);
+-- Wreckly — tabla yards en Supabase
+-- Corre esto en el SQL Editor de Supabase antes de ejecutar el script Python
 
 create table if not exists yards (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  name text not null, contact text, email text, phone text,
-  address text, city text, vehicle_types text, notes text,
-  status text not null default 'new'            -- new | active | paused
+  id           bigserial primary key,
+  hubspot_id   text unique not null,
+  company      text not null,
+  city         text,
+  province     text default 'Ontario',
+  postal_code  text,
+  phone        text,
+  email        text,
+  lat          double precision,
+  lng          double precision,
+  active       boolean default true,
+  created_at   timestamptz default now(),
+  updated_at   timestamptz default now()
 );
 
--- Lock the tables: only the server (service role key) can read/write.
-alter table requests enable row level security;
-alter table yards enable row level security;
+-- Índice para búsquedas por coordenadas (PostGIS no es necesario para distancia simple)
+create index if not exists yards_lat_lng_idx on yards (lat, lng);
+create index if not exists yards_active_idx  on yards (active);
+
+-- Función de distancia en km (Haversine) — usada desde Netlify function
+create or replace function yards_near(
+  buyer_lat double precision,
+  buyer_lng double precision,
+  radius_km double precision default 150,
+  max_results int default 10
+)
+returns table (
+  id          bigint,
+  hubspot_id  text,
+  company     text,
+  city        text,
+  phone       text,
+  email       text,
+  lat         double precision,
+  lng         double precision,
+  distance_km double precision
+)
+language sql stable as $$
+  select
+    y.id,
+    y.hubspot_id,
+    y.company,
+    y.city,
+    y.phone,
+    y.email,
+    y.lat,
+    y.lng,
+    round(
+      (6371 * acos(
+        cos(radians(buyer_lat)) * cos(radians(y.lat)) *
+        cos(radians(y.lng) - radians(buyer_lng)) +
+        sin(radians(buyer_lat)) * sin(radians(y.lat))
+      ))::numeric, 1
+    ) as distance_km
+  from yards y
+  where y.active = true
+    and y.lat is not null
+    and y.lng is not null
+    and (6371 * acos(
+      cos(radians(buyer_lat)) * cos(radians(y.lat)) *
+      cos(radians(y.lng) - radians(buyer_lng)) +
+      sin(radians(buyer_lat)) * sin(radians(y.lat))
+    )) <= radius_km
+  order by distance_km asc
+  limit max_results;
+$$;
