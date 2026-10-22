@@ -2,7 +2,7 @@ const db = require('../lib/db');
 const { send, readJson, clip, limited } = require('../lib/util');
 const { notifyAdmin } = require('../lib/mail');
 const { postalToLatLng } = require('../lib/geo');
-const { sendSms } = require('../lib/sms');
+const { sendSms, toE164 } = require('../lib/sms');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
@@ -27,47 +27,62 @@ module.exports = async (req, res) => {
 
     const saved = await db.insert('requests', row);
     const reqId = saved.id.toString().slice(0, 8).toUpperCase();
+    const vehicle = `${row.year} ${row.make} ${row.model}`;
 
     let yards = [];
+    let geoNote = '';
     try {
       const { lat, lng } = await postalToLatLng(row.postal);
       yards = await db.nearbyYards(lat, lng, 150, 5);
     } catch (geoErr) {
-      console.error('Geo/yard lookup:', geoErr.message);
+      geoNote = 'Geo/yard lookup failed: ' + geoErr.message;
+      console.error(geoNote);
     }
 
-    const smsLog = [];
+    // Text each nearby yard and log it in quotes (their replies come back to /api/sms-inbound)
+    const lines = [];
     for (const yard of yards) {
-      if (!yard.phone) continue;
+      const name = yard.company || 'Yard';
+      const phone = toE164(yard.phone);
+      const q = { request_id: saved.id, yard_id: yard.id, yard_name: name, yard_phone: phone || yard.phone, distance_km: yard.distance_km };
+      if (!phone) {
+        await db.insert('quotes', { ...q, status: 'failed', error: 'no valid phone' }).catch((e) => console.error('quote insert', e.message));
+        lines.push(`  ✗ ${name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone || '-'}: no valid phone, CALL`);
+        continue;
+      }
       const msg = [
-        `Wreckly.ca — Request #${reqId}`,
-        ``,
+        `Wreckly: a buyer near you needs a part. Ref #${reqId}`,
         `Part: ${row.part}`,
-        `Vehicle: ${row.year} ${row.make} ${row.model}${row.vin ? ' (VIN ' + row.vin + ')' : ''}`,
-        `Buyer postal: ${row.postal} (~${yard.distance_km} km from you)`,
-        row.notes ? `Notes: ${row.notes}` : '',
-        ``,
-        `Reply YES [price] (e.g. YES 250)`,
-        `Reply NO if unavailable`,
-        ``,
-        `Questions? info@wreckly.ca`,
+        `Vehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}`,
+        row.notes ? `Notes: ${row.notes.slice(0, 120)}` : '',
+        `Buyer area: ${row.postal.slice(0, 3)}`,
+        `Have it? Reply YES and your price (e.g. YES 250). Reply NO if not.`,
       ].filter(Boolean).join('\n');
       try {
-        await sendSms(yard.phone, msg);
-        smsLog.push(`  ✓ ${yard.company || yard.name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone}`);
+        const out = await sendSms(phone, msg);
+        await db.insert('quotes', { ...q, status: 'sent', sms_sid: out.sid || null });
+        lines.push(`  ✓ ${name} (${yard.city}, ~${yard.distance_km} km) ${phone}`);
       } catch (e) {
-        console.error('SMS failed for', yard.name, e.message);
-        smsLog.push(`  ✗ ${yard.company || yard.name} — SMS failed: ${e.message}`);
+        console.error('SMS failed for', name, e.message);
+        await db.insert('quotes', { ...q, status: 'failed', error: e.message.slice(0, 300) }).catch(() => {});
+        lines.push(`  ✗ ${name} (${yard.city}, ~${yard.distance_km} km) ${phone}: SMS failed, CALL`);
       }
     }
 
+    // Let the buyer know we're on it (only if they gave a phone)
+    if (toE164(row.phone)) {
+      try {
+        await sendSms(row.phone, `Wreckly: we got your request for ${row.part} (${vehicle}). We're checking yards near you and will text and email you the price. Ref #${reqId}`);
+      } catch (e) { console.error('buyer ack SMS', e.message); }
+    }
+
     const yardsSummary = yards.length
-      ? smsLog.join('\n')
-      : '  (no yards found near ' + row.postal + ' — check yards table has lat/lng)';
+      ? lines.join('\n') + '\n\nYard replies are handled automatically. The buyer gets the best price by email/text ~1 hour after the first YES (or sooner if all yards answer). Call the ✗ yards only if you want more quotes.'
+      : '  No yards found near ' + row.postal + '. ' + (geoNote || 'Check the yards table (lat/lng, active).') + '\n  Find a yard manually and use the admin panel to send the quote.';
 
     await notifyAdmin(
-      `Request #${reqId}: ${row.part} — ${row.year} ${row.make} ${row.model}`,
-      `Part: ${row.part}\nVehicle: ${row.year} ${row.make} ${row.model}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nYards SMS (${yards.length}):\n${yardsSummary}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
+      `Request #${reqId}: ${row.part} - ${vehicle}`,
+      `Part: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nYards texted (${yards.length}):\n${yardsSummary}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
     );
 
     return send(res, 200, { ok: true, id: saved.id });
