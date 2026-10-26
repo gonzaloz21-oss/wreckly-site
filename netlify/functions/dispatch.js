@@ -5,6 +5,7 @@ const db = require('../../lib/db');
 const { sendMail, notifyAdmin } = require('../../lib/mail');
 const { sendSms, toE164 } = require('../../lib/sms');
 const { sendBestOffer, ref } = require('../../lib/offer');
+const { addressToLatLng, postalToLatLng } = require('../../lib/geo');
 
 const WAIT_MIN = Number(process.env.OFFER_WAIT_MIN || 60);
 const NO_RESULT_HOURS = Number(process.env.NO_RESULT_HOURS || 24);
@@ -46,6 +47,20 @@ Sorry we couldn't find it this time.`,
     console.error('dispatch', e);
     return { statusCode: 500 };
   }
+
+  // 3) Put yards on the map, a few per run (free geocoders allow ~1 request per second)
+  try {
+    const todo = await db.list('yards', 'lat=is.null&active=is.true&geo_failed_at=is.null&order=id.asc&limit=8');
+    for (const y of todo) {
+      let pos = null;
+      if (y.address) pos = await addressToLatLng(y.address, y.city).catch(() => null);
+      if (!pos && y.postal_code) pos = await postalToLatLng(y.postal_code).catch(() => null);
+      if (!pos && y.city) pos = await addressToLatLng('', y.city).catch(() => null);
+      if (pos) { await db.update('yards', y.id, pos); log.push('geo ok ' + y.id); }
+      else { await db.update('yards', y.id, { geo_failed_at: new Date().toISOString() }); log.push('geo failed ' + y.id); }
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+  } catch (e) { console.error('geo backfill', e.message); }
   if (log.length) console.log('dispatch:', log.join(' | '));
   return { statusCode: 200 };
 };
