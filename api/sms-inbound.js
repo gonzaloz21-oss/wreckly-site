@@ -88,7 +88,7 @@ module.exports = async (req, res) => {
       if (r && r.status !== 'paid' && !r.offer_sent_at) {
         await db.patchWhere('requests', 'id=eq.' + r.id + '&first_yes_at=is.null', { first_yes_at: now });
         await maybeDispatchNow(q.request_id);
-        return twiml(res, `Got it: ${money(reply.priceCents)} for the ${r.part} (${refTxt}). We'll text you right away if the buyer reserves it. Please hold it if you can.`);
+        return twiml(res, `Got it: ${money(reply.priceCents)} for the ${r.part} (${refTxt}). If the buyer reserves it, they pay our 10% as a deposit and you collect ${money(reply.priceCents - Math.max(50, Math.round(reply.priceCents * 0.10)))} at pickup. We'll text you right away.`);
       }
       return twiml(res, `Thanks! Got your price for ${refTxt}. The buyer already has an offer; we'll keep you in mind for the next one.`);
     }

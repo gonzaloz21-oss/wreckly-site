@@ -51,12 +51,13 @@ module.exports = async (req, res) => {
         continue;
       }
       const msg = [
-        `Wreckly: a buyer near you needs a part. Ref #${reqId}`,
+        `Wreckly: we have a buyer for this part. Ref #${reqId}`,
         `Part: ${row.part}`,
         `Vehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}`,
         row.notes ? `Notes: ${row.notes.slice(0, 120)}` : '',
         `Buyer area: ${row.postal.slice(0, 3)}`,
-        `Have it? Reply YES and your price (e.g. YES 250). Reply NO if not.`,
+        `Have it? Reply YES and your price (e.g. YES 250), or NO.`,
+        `Wreckly's fee is 10% of your price: the buyer pays it to us as a deposit and pays you the other 90% at pickup.`,
       ].filter(Boolean).join('\n');
       try {
         const out = await sendSms(phone, msg);
