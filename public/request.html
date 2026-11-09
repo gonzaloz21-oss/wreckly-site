@@ -39,7 +39,7 @@
       <div class="field"><label class="req" for="model">Model</label><input id="model" name="model" required maxlength="60"></div>
     </div>
     <div class="grid2">
-      <div class="field"><label for="vin">VIN <span style="font-weight:500;color:var(--mute)">(optional, helps match the part)</span></label><input id="vin" name="vin" maxlength="17" style="text-transform:uppercase"></div>
+      <div class="field"><label for="vin">VIN <span id="vinhint" style="font-weight:500;color:var(--mute)">(optional, helps match the part)</span></label><input id="vin" name="vin" maxlength="17" style="text-transform:uppercase"></div>
       <div class="field"><label class="req" for="postal">Postal code</label><input id="postal" name="postal" required maxlength="7" placeholder="M5V 2T6" autocomplete="postal-code"><div class="hint">We use it to find yards near you.</div></div>
     </div>
     <div class="field"><label for="notes">Anything else? <span style="font-weight:500;color:var(--mute)">(trim, engine size, colour, side&hellip;)</span></label><textarea id="notes" name="notes" maxlength="800"></textarea></div>
@@ -61,10 +61,13 @@
 (function(){
   var f=document.getElementById('f'),msg=document.getElementById('msg'),go=document.getElementById('go');
   function show(t,c){msg.className='msg '+c;msg.textContent=t}
+  var hint=document.getElementById('vinhint');
+  f.elements.part.addEventListener('input',function(){var need=/\b(engine|transmission|transaxle|gearbox)\b/i.test(f.elements.part.value);hint.textContent=need?'(required for engines and transmissions)':'(optional, helps match the part)';hint.style.color=need?'#E8510A':''});
   f.addEventListener('submit',function(e){
     e.preventDefault();
     var d={};['part','year','make','model','vin','postal','notes','name','email','phone','website'].forEach(function(k){d[k]=f.elements[k].value.trim()});
     if(!d.part||!d.year||!d.make||!d.model||!d.postal||!d.name||!d.email){return show('Please fill in the required fields.','err')}
+    if(/\b(engine|transmission|transaxle|gearbox)\b/i.test(d.part)&&d.vin.length!==17){return show('For engines and transmissions we need your 17-character VIN to find the exact match.','err')}
     if(!f.elements.terms.checked){return show('Please accept the Terms to continue.','err')}
     if(!/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(d.postal)){return show('Please enter a valid Canadian postal code (e.g. M5V 2T6).','err')}
     go.disabled=true;go.textContent='Sending...';
