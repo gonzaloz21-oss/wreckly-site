@@ -1,18 +1,39 @@
 // Scheduled every 15 minutes (see netlify.toml):
+// 0) texts yards for requests that came in outside business hours (nights, weekends, holidays)
 // 1) sends the best offer once the wait after the first YES has passed
-// 2) tells buyers when no yard had the part after 24 hours
+// 2) 3 hours after texting with no price yet: emails the admin who to call
+// 3) tells buyers when no yard had the part after one full business day
 const db = require('../../lib/db');
 const { sendMail, notifyAdmin } = require('../../lib/mail');
 const { sendSms, toE164 } = require('../../lib/sms');
 const { sendBestOffer, ref } = require('../../lib/offer');
 const { addressToLatLng, postalToLatLng } = require('../../lib/geo');
+const { textYards } = require('../../lib/yardsend');
+const { isBusinessHours, nextBusinessDay } = require('../../lib/hours');
+const { valueNote } = require('../../lib/value');
 
 const WAIT_MIN = Number(process.env.OFFER_WAIT_MIN || 60);
-const NO_RESULT_HOURS = Number(process.env.NO_RESULT_HOURS || 24);
+const CALL_AFTER_HOURS = 3;
 
 exports.handler = async () => {
   const log = [];
+  const open = isBusinessHours();
   try {
+    // 0) Requests held outside business hours: text the yards now
+    if (open) {
+      const held = await db.list('requests', 'sms_hold=is.true&status=eq.new&limit=10');
+      for (const r of held) {
+        const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&sms_hold=is.true', { sms_hold: false });
+        if (!claimed.length) continue;
+        try {
+          const out = await textYards(r);
+          await notifyAdmin(`Yards texted #${ref(r.id)}: ${r.part} - ${r.year} ${r.make} ${r.model}`,
+            `This request came in outside yard hours. Yards were texted now.\n\nPart value: ${valueNote(r.part)}\n\nYards texted (${out.texted}):\n${out.summary}`);
+          log.push(ref(r.id) + ' held request texted');
+        } catch (e) { log.push(ref(r.id) + ' held text error ' + e.message); await notifyAdmin('Held request failed #' + ref(r.id), e.message); }
+      }
+    }
+
     const cutoff = new Date(Date.now() - WAIT_MIN * 60e3).toISOString();
     const ready = await db.list('requests', 'status=in.(new,no_stock)&offer_sent_at=is.null&first_yes_at=lt.' + cutoff + '&limit=20');
     for (const r of ready) {
@@ -20,8 +41,26 @@ exports.handler = async () => {
       catch (e) { log.push(ref(r.id) + ' offer error ' + e.message); await notifyAdmin('Auto-offer failed #' + ref(r.id), e.message); }
     }
 
-    const old = new Date(Date.now() - NO_RESULT_HOURS * 3600e3).toISOString();
-    const stale = await db.list('requests', 'status=eq.new&offer_sent_at=is.null&first_yes_at=is.null&noresult_sent_at=is.null&created_at=lt.' + old + '&limit=20');
+    // 2) No price 3 hours after texting: tell the admin who to call (business hours only)
+    if (open) {
+      const callCut = new Date(Date.now() - CALL_AFTER_HOURS * 3600e3).toISOString();
+      const quiet = await db.list('requests', 'status=eq.new&first_yes_at=is.null&offer_sent_at=is.null&call_reminder_at=is.null&yards_texted_at=lt.' + callCut + '&limit=10');
+      for (const r of quiet) {
+        const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&call_reminder_at=is.null', { call_reminder_at: new Date().toISOString() });
+        if (!claimed.length) continue;
+        const qs = await db.list('quotes', 'request_id=eq.' + r.id + '&order=distance_km.asc').catch(() => []);
+        const list = qs.filter((q) => !q.replied_at || q.status === 'unclear')
+          .map((q) => `  📞 ${q.yard_name} (~${q.distance_km} km) ${q.yard_phone || '-'}${q.status === 'failed' ? ' (no SMS)' : q.status === 'unclear' ? ' (replied, unclear)' : ''}`);
+        const noes = qs.filter((q) => q.status === 'no').length;
+        await notifyAdmin(`Call yards #${ref(r.id)}: ${r.part} - ${r.year} ${r.make} ${r.model}`,
+          `No price yet, 3 hours after texting the yards.\n\nPart value: ${valueNote(r.part)}\nBuyer: ${r.name} <${r.email}>${r.phone ? ' ' + r.phone : ''}${r.vin ? '\nVIN: ' + r.vin : ''}\nPostal: ${r.postal}\n\nAnswered NO: ${noes}\nNo answer yet, call if worth it:\n${list.join('\n') || '  (none)'}\n\nAlso check car-part.com: ${r.year} ${r.make} ${r.model}, ${r.part}, postal ${r.postal}\nIf you get a price, send it from the admin panel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`);
+        log.push(ref(r.id) + ' call reminder sent');
+      }
+    }
+
+    // 3) No price after one full business day of waiting: tell the buyer we're still looking
+    const staleCand = open ? await db.list('requests', 'status=eq.new&offer_sent_at=is.null&first_yes_at=is.null&noresult_sent_at=is.null&yards_texted_at=not.is.null&limit=20') : [];
+    const stale = staleCand.filter((r) => nextBusinessDay(new Date(r.yards_texted_at)) <= new Date());
     for (const r of stale) {
       const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&noresult_sent_at=is.null', { noresult_sent_at: new Date().toISOString(), status: 'no_stock' });
       if (!claimed.length) continue;
