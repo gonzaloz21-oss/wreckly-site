@@ -31,16 +31,19 @@ exports.handler = async () => {
         text:
 `Hi ${r.name.split(' ')[0]},
 
-We checked the yards near you, and none of them has the ${r.part} for your ${r.year} ${r.make} ${r.model} right now.
+Quick update: the yards closest to you don't have the ${r.part} for your ${r.year} ${r.make} ${r.model} in stock right now.
 
-You don't owe anything. If a yard gets one in, we'll email you. You can also send a new request anytime at https://wreckly.ca/request.html (for example, with a different part or a wider area).
+We're still checking more yards across Ontario and Quebec. If we find one, we'll email you the price and photos before you pay anything.
 
-Sorry we couldn't find it this time.`,
+You don't owe anything. If you'd like to add details that help us find the exact part (like your VIN), just reply to this email.
+
+Thanks,
+The Wreckly Team`,
       }).catch((e) => console.error('noresult mail', e.message));
       if (toE164(r.phone)) {
-        await sendSms(r.phone, `Wreckly: sorry, no yard near you has the ${r.part} right now. You owe nothing. We'll email you if one turns up.`).catch((e) => console.error('noresult sms', e.message));
+        await sendSms(r.phone, `Wreckly: the yards closest to you don't have the ${r.part} right now. We're still checking more yards and will email you if we find one. You owe nothing.`).catch((e) => console.error('noresult sms', e.message));
       }
-      await notifyAdmin('No yard found #' + ref(r.id) + ': ' + r.part, `${r.name} <${r.email}> was told no yard has it (${r.year} ${r.make} ${r.model}, ${r.postal}). If you find one, send a quote from the admin panel.`);
+      await notifyAdmin('No yard found #' + ref(r.id) + ': ' + r.part, `${r.name} <${r.email}> was told nearby yards don't have it and we're still looking (${r.year} ${r.make} ${r.model}, ${r.postal}). If you find one, send a quote from the admin panel.`);
       log.push(ref(r.id) + ' no-result sent');
     }
   } catch (e) {
