@@ -3,6 +3,7 @@ const { send, readJson, clip, limited } = require('../lib/util');
 const { notifyAdmin } = require('../lib/mail');
 const { postalToLatLng } = require('../lib/geo');
 const { sendSms, toE164 } = require('../lib/sms');
+const { askText } = require('../lib/yardsms');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
@@ -41,24 +42,23 @@ module.exports = async (req, res) => {
 
     // Text each nearby yard and log it in quotes (their replies come back to /api/sms-inbound)
     const lines = [];
+    const calls = [];
     for (const yard of yards) {
       const name = yard.company || 'Yard';
       const phone = toE164(yard.phone);
       const q = { request_id: saved.id, yard_id: yard.id, yard_name: name, yard_phone: phone || yard.phone, distance_km: yard.distance_km };
+      if (yard.landline) {
+        // Landline: texts never arrive (Twilio 30006). Log it and list it in the admin email to call.
+        await db.insert('quotes', { ...q, status: 'failed', error: 'landline: call' }).catch((e) => console.error('quote insert', e.message));
+        calls.push(`  📞 ${name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone || '-'}`);
+        continue;
+      }
       if (!phone) {
         await db.insert('quotes', { ...q, status: 'failed', error: 'no valid phone' }).catch((e) => console.error('quote insert', e.message));
         lines.push(`  ✗ ${name} (${yard.city}, ~${yard.distance_km} km) ${yard.phone || '-'}: no valid phone, CALL`);
         continue;
       }
-      const msg = [
-        `Wreckly: we have a buyer for this part. Ref #${reqId}`,
-        `Part: ${row.part}`,
-        `Vehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}`,
-        row.notes ? `Notes: ${row.notes.slice(0, 120)}` : '',
-        `Buyer area: ${row.postal.slice(0, 3)}`,
-        `Have it? Reply YES and your price (e.g. YES 250), or NO.`,
-        `Wreckly's fee is 10% of your price: the buyer pays it to us as a deposit and pays you the other 90% at pickup.`,
-      ].filter(Boolean).join('\n');
+      const msg = askText(row);
       try {
         const out = await sendSms(phone, msg);
         await db.insert('quotes', { ...q, status: 'sent', sms_sid: out.sid || null });
@@ -77,13 +77,15 @@ module.exports = async (req, res) => {
       } catch (e) { console.error('buyer ack SMS', e.message); }
     }
 
+    const texted = yards.length - calls.length;
     const yardsSummary = yards.length
-      ? lines.join('\n') + '\n\nYard replies are handled automatically. The buyer gets the best price by email/text ~1 hour after the first YES (or sooner if all yards answer). Call the ✗ yards only if you want more quotes.'
+      ? lines.join('\n') + (calls.length ? '\n\nLandlines, no SMS. CALL these:\n' + calls.join('\n') : '') +
+        '\n\nYard replies are handled automatically. The buyer gets the lowest quote by email/text ~1 hour after the first price (or sooner if all yards answer). Call the ✗ yards only if you want more quotes.'
       : '  No yards found near ' + row.postal + '. ' + (geoNote || 'Check the yards table (lat/lng, active).') + '\n  Find a yard manually and use the admin panel to send the quote.';
 
     await notifyAdmin(
       `Request #${reqId}: ${row.part} - ${vehicle}`,
-      `Part: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nYards texted (${yards.length}):\n${yardsSummary}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
+      `Part: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nYards texted (${texted}):\n${yardsSummary}\n\nCheck stock on car-part.com (worth it if the part is $250+): https://www.car-part.com\n  Search: ${row.year} ${row.make} ${row.model}, ${row.part}, postal ${row.postal}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
     );
 
     return send(res, 200, { ok: true, id: saved.id });
