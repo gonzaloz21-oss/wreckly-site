@@ -2,7 +2,7 @@
 // 0) texts yards for requests that came in outside business hours (nights, weekends, holidays)
 // 1) sends the best offer once the wait after the first YES has passed
 // 2) 3 hours after texting with no price yet: emails the admin who to call
-// 3) tells buyers when no yard had the part after one full business day
+// 3) tells buyers when no yard had the part after two full business days
 const db = require('../../lib/db');
 const { sendMail, notifyAdmin } = require('../../lib/mail');
 const { sendSms, toE164 } = require('../../lib/sms');
@@ -58,9 +58,9 @@ exports.handler = async () => {
       }
     }
 
-    // 3) No price after one full business day of waiting: tell the buyer we're still looking
+    // 3) No price after two full business days of waiting: tell the buyer we're still looking
     const staleCand = open ? await db.list('requests', 'status=eq.new&offer_sent_at=is.null&first_yes_at=is.null&noresult_sent_at=is.null&yards_texted_at=not.is.null&limit=20') : [];
-    const stale = staleCand.filter((r) => nextBusinessDay(new Date(r.yards_texted_at)) <= new Date());
+    const stale = staleCand.filter((r) => nextBusinessDay(nextBusinessDay(new Date(r.yards_texted_at))) <= new Date());
     for (const r of stale) {
       const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&noresult_sent_at=is.null', { noresult_sent_at: new Date().toISOString(), status: 'no_stock' });
       if (!claimed.length) continue;
