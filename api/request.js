@@ -4,7 +4,7 @@ const { notifyAdmin } = require('../lib/mail');
 const { sendSms, toE164 } = require('../lib/sms');
 const { textYards } = require('../lib/yardsend');
 const { isBusinessHours } = require('../lib/hours');
-const { valueNote, needsVin } = require('../lib/value');
+const { valueNote, needsVin, chaseCheck, BUDGETS, TIMINGS } = require('../lib/value');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
@@ -20,6 +20,12 @@ module.exports = async (req, res) => {
       name:   clip(d.name, 80),   email: clip(d.email, 120).toLowerCase(),
       phone:  clip(d.phone, 30),  notes: clip(d.notes, 800),
     };
+    // Budget and timing go at the start of notes (no extra DB columns needed)
+    const budget = BUDGETS.includes(d.budget) ? d.budget : '';
+    const needed = TIMINGS.includes(d.needed) ? d.needed : '';
+    if (budget || needed) {
+      row.notes = clip([budget && 'Budget: ' + budget, needed && 'Needed: ' + needed, row.notes].filter(Boolean).join(' | '), 900);
+    }
     if (!row.part || !row.year || !row.make || !row.model || !row.name || !row.email)
       return send(res, 400, { error: 'Please fill in the required fields.' });
     if (!/^\S+@\S+\.\S+$/.test(row.email))
@@ -53,9 +59,10 @@ module.exports = async (req, res) => {
       } catch (e) { console.error('buyer ack SMS', e.message); }
     }
 
+    const chase = chaseCheck(row.part, row.notes);
     await notifyAdmin(
-      `Request #${reqId}: ${row.part} - ${vehicle}`,
-      `Part: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nPart value: ${valueNote(row.part)}\n\n${yardsBlock}\n\nCheck stock on car-part.com: https://www.car-part.com\n  Search: ${row.year} ${row.make} ${row.model}, ${row.part}, postal ${row.postal}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
+      `${chase.yes ? '⭐ ' : '[Auto] '}Request #${reqId}: ${row.part} - ${vehicle}`,
+      `${chase.yes ? 'WORTH CHASING BY HAND' : 'AUTOMATIC ONLY, no need to chase by hand'} (${chase.why})\n\nPart: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nPart value: ${valueNote(row.part)}\n\n${yardsBlock}\n\nCheck stock on car-part.com: https://www.car-part.com\n  Search: ${row.year} ${row.make} ${row.model}, ${row.part}, postal ${row.postal}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
     );
 
     return send(res, 200, { ok: true, id: saved.id });
