@@ -10,7 +10,7 @@ const { sendBestOffer, ref } = require('../../lib/offer');
 const { addressToLatLng, postalToLatLng } = require('../../lib/geo');
 const { textYards } = require('../../lib/yardsend');
 const { isBusinessHours, nextBusinessDay } = require('../../lib/hours');
-const { valueNote } = require('../../lib/value');
+const { valueNote, chaseCheck } = require('../../lib/value');
 
 const WAIT_MIN = Number(process.env.OFFER_WAIT_MIN || 60);
 const CALL_AFTER_HOURS = 3;
@@ -48,6 +48,8 @@ exports.handler = async () => {
       for (const r of quiet) {
         const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&call_reminder_at=is.null', { call_reminder_at: new Date().toISOString() });
         if (!claimed.length) continue;
+        // Only remind about calls when the request is worth chasing by hand
+        if (!chaseCheck(r.part, r.notes).yes) { log.push(ref(r.id) + ' call reminder skipped (auto only)'); continue; }
         const qs = await db.list('quotes', 'request_id=eq.' + r.id + '&order=distance_km.asc').catch(() => []);
         const list = qs.filter((q) => !q.replied_at || q.status === 'unclear')
           .map((q) => `  📞 ${q.yard_name} (~${q.distance_km} km) ${q.yard_phone || '-'}${q.status === 'failed' ? ' (no SMS)' : q.status === 'unclear' ? ' (replied, unclear)' : ''}`);
