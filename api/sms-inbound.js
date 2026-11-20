@@ -14,13 +14,17 @@ function twiml(res, message) {
 }
 
 const STOP_WORDS = /^\s*(stop|stopall|unsubscribe|cancel|end|quit|arret|arrêt)\s*$/i;
-const NO_WORDS = /^\s*(no|n|nope|nah|sorry|non|don'?t|do not|not available|none|negative|sold|(i |we )?didn'?t (find|found)( it)?|not found|can'?t find|we don'?t|i don'?t)\b/i;
+const NO_WORDS = /^\s*(no|n|nop|nope|nah|nothing|sorry|non|don'?t|do not|not available|none|negative|sold|(i |we )?didn'?t (find|found)( it)?|not found|can'?t find|we don'?t|i don'?t)\b/i;
 const YES_WORDS = /^\s*(yes|y|yeah|yea|ya|yep|yup|sure|si|sí|oui|ok|okay|have it|have one|got it|got one|i have|we have|i got|we got|available)\b/i;
 
-// Returns { kind: 'stop'|'no'|'yes'|'unclear', priceCents, ref }
+// Carrier/landline auto-replies: the number can't get texts.
+const NO_SMS = /(does not|doesn'?t|cannot|can'?t|unable to) (accept|receive|get) (sms|text)/i;
+
+// Returns { kind: 'stop'|'nosms'|'no'|'yes'|'unclear', priceCents, ref }
 function parseReply(body) {
   const text = String(body || '').trim();
   if (STOP_WORDS.test(text)) return { kind: 'stop' };
+  if (NO_SMS.test(text)) return { kind: 'nosms' };
   const refMatch = text.match(/#\s*([0-9A-F]{8})\b/i);
   const ref = refMatch ? refMatch[1].toLowerCase() : null;
   const rest = refMatch ? text.replace(refMatch[0], ' ') : text;
@@ -77,6 +81,15 @@ module.exports = async (req, res) => {
     const r = await db.get('requests', q.request_id);
     const refTxt = '#' + String(q.request_id).slice(0, 8).toUpperCase();
     const now = new Date().toISOString();
+
+    // Number can't receive texts: stop texting it and close this quote.
+    if (reply.kind === 'nosms') {
+      await db.patchWhere('yards', 'phone=eq.' + encodeURIComponent(from), { sms_ok: false });
+      await db.update('quotes', q.id, { status: 'failed', reply: body, replied_at: now });
+      await notifyAdmin(`${q.yard_name} can't get texts`, `${q.yard_name} ${from} auto-replied:\n${body}\n\nWe won't text them anymore. Call them if needed (${refTxt}).`);
+      await maybeDispatchNow(q.request_id);
+      return twiml(res);
+    }
 
     if (reply.kind === 'no') {
       await db.update('quotes', q.id, { status: 'no', reply: body, replied_at: now });
