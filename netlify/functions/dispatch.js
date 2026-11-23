@@ -49,7 +49,7 @@ exports.handler = async () => {
         const claimed = await db.patchWhere('requests', 'id=eq.' + r.id + '&call_reminder_at=is.null', { call_reminder_at: new Date().toISOString() });
         if (!claimed.length) continue;
         // Only remind about calls when the request is worth chasing by hand
-        if (!chaseCheck(r.part, r.notes).yes) { log.push(ref(r.id) + ' call reminder skipped (auto only)'); continue; }
+        if (!chaseCheck(r.part, r.notes, r.year).yes) { log.push(ref(r.id) + ' call reminder skipped (auto only)'); continue; }
         const qs = await db.list('quotes', 'request_id=eq.' + r.id + '&order=distance_km.asc').catch(() => []);
         const list = qs.filter((q) => !q.replied_at || q.status === 'unclear')
           .map((q) => `  📞 ${q.yard_name} (~${q.distance_km} km) ${q.yard_phone || '-'}${q.status === 'failed' ? ' (no SMS)' : q.status === 'unclear' ? ' (replied, unclear)' : ''}`);
