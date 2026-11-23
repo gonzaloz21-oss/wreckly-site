@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
       } catch (e) { console.error('buyer ack SMS', e.message); }
     }
 
-    const chase = chaseCheck(row.part, row.notes);
+    const chase = chaseCheck(row.part, row.notes, row.year);
     await notifyAdmin(
       `${chase.yes ? '⭐ ' : '[Auto] '}Request #${reqId}: ${row.part} - ${vehicle}`,
       `${chase.yes ? 'WORTH CHASING BY HAND' : 'AUTOMATIC ONLY, no need to chase by hand'} (${chase.why})\n\nPart: ${row.part}\nVehicle: ${vehicle}${row.vin ? ' (VIN ' + row.vin + ')' : ''}\nPostal: ${row.postal}\nBuyer: ${row.name} <${row.email}>${row.phone ? ' ' + row.phone : ''}\nNotes: ${row.notes || '-'}\n\nPart value: ${valueNote(row.part)}\n\n${yardsBlock}\n\nCheck stock on car-part.com: https://www.car-part.com\n  Search: ${row.year} ${row.make} ${row.model}, ${row.part}, postal ${row.postal}\n\nPanel: ${process.env.SITE_URL || 'https://wreckly.ca'}/admin.html`
